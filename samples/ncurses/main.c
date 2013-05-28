@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <curses.h>
 #include <unistd.h>
+#include <limits.h>
 #include <ps3_controller.h>
 
 #define REFRESH_RATE 60
@@ -27,8 +28,8 @@ char array[18][59] = {
     { " \\        /                                     \\        /" },
     { "  \\______/                                       \\______/ " }
 };
-char loadingCursor[] = "|/—\\|/—\\";
-WINDOW *mainwin, *cwin, *gwin;
+char loadingCursor[] = "|/-\\|/-\\";
+WINDOW *mainwin, *cwin, *gwin, *lwin;
 struct input_s b;
 
 void init_ui()
@@ -37,11 +38,23 @@ void init_ui()
         fprintf(stderr, "Error initialising ncurses.\n");
         exit(EXIT_FAILURE);
     }
+    if(LINES < 30) {
+        fprintf(stderr, "Term too small :(\n");
+        exit(EXIT_FAILURE);
+    }
     noecho();
     curs_set(0);
     keypad(mainwin, TRUE);
     mvwaddstr(mainwin, 0, (COLS - 9) / 2, "Dualshock");
 
+    lwin = subwin(mainwin, 4, 36, LINES / 2, (COLS - 36) / 2);
+    box(lwin, 0, 0);
+
+    refresh();
+}
+
+void init_mainUI()
+{
     cwin = subwin(mainwin, 20, COLS, 1, 0);
     box(cwin, 0, 0);
     mvwaddstr(cwin, 0, 4, " Dualshock sixaxis ");
@@ -50,8 +63,9 @@ void init_ui()
     box(gwin, 0, 0);
     mvwaddstr(gwin, 0, 4, " Axis ");
 
-    refresh();
+    delwin(lwin);
 
+    refresh();
 }
 
 void refresh_ui()
@@ -87,10 +101,48 @@ void refresh_ui()
     /* Axis */
     int mx = COLS / 2;
     int my = (LINES - 21) / 2;
-    mvwprintw(gwin, 1, 1, "aX: %.3d", b.axis.x);
-    mvwprintw(gwin, 2, 1, "aY: %.3d", b.axis.y);
+    char c;
+    mvwprintw(gwin, 1, 1, "%s", "            ");
+    mvwprintw(gwin, 2, 1, "%s", "            ");
+    mvwprintw(gwin, 2, 1, "aY: %d", b.axis.y);
+    mvwprintw(gwin, 1, 1, "aX: %d", b.axis.x);
+    mvwprintw(gwin, 2, 1, "aY: %d", b.axis.y);
     mvwprintw(gwin, my, mx, "%c", '+');
+    /* X axis */
+    int units = mx - 2;
+    int n = SCHAR_MAX / units;
+    int absX = abs(b.axis.x);
+    offset = (b.axis.x > 0 ? mx * 2 - 1 : 1);
+    for(i = 1; i <= units; ++i) {
+        if(absX > ((units - i) * n))
+            c = '-';
+        else
+            c = ' ';
+        mvwprintw(gwin, my, offset + (i * (b.axis.x < 0 ? 1 : -1)), "%c", c);
+    }
+    /* Y axis */
+    int absY = abs(b.axis.y);
+    units = my - 2;
+    n = SCHAR_MAX / units;
+    offset = (b.axis.y < 0 ? my * 2 - 2 : 2);
+    for(i = 0; i < units; ++i) {
+        if(absY > ((units - i) * n))
+            c = '|';
+        else
+            c = ' ';
+        mvwprintw(gwin, offset + (i * (b.axis.y < 0 ? -1 : 1)), mx, "%c", c);
+    }
     wrefresh(gwin);
+}
+
+void loadingScreen()
+{
+    static int i = 0;
+    mvwprintw(lwin, 1, 2, "%s", " Waiting for a Bluetooth Device ");
+    mvwprintw(lwin, 2, 18, "%c", loadingCursor[i++]);
+    if(i >= sizeof(loadingCursor))
+        i = 0;
+    wrefresh(lwin);
 }
 
 int main()
@@ -98,9 +150,12 @@ int main()
     init_ui();
 
     ps3Controller_start();
-    while(ps3Controller_count() == 0)
-        ;
+    while(ps3Controller_count() == 0) {
+        loadingScreen();
+        usleep(1000 * 250);
+    }
 
+    init_mainUI();
     while(1) {
         if(!ps3Controller_get(0, &b)) {
             refresh_ui();

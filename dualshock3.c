@@ -1,5 +1,4 @@
 #include "dualshock3.h"
-#include "log.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
