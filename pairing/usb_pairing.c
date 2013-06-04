@@ -17,6 +17,8 @@
 #define VENDOR_SONY 0x054c
 #define PRODUCT_SIXAXIS_DS3 0x0268
 
+bdaddr_t newAddr;
+
 void fatal(char *msg) {
     if ( errno ) perror(msg); else fprintf(stderr, "%s\n", msg);
     exit(1);
@@ -99,6 +101,14 @@ void usb_pair_device(struct usb_device *dev, int itfnum)
     if (res < 0)
         fatal("usb_claim_interface");
 
+    bdaddr_t ba, oldAddr;
+    if(!memcmp(newAddr.b, "000000", 6))
+        ba = get_local_bdaddr();
+    else
+        ba = newAddr;
+    oldAddr = get_pairing_address(devh, itfnum);
+    fprintf(stderr, "%s -> %s\n", myba2str(&oldAddr), myba2str(&ba));
+    set_pairing_address(devh, itfnum, ba);
     fprintf(stderr, "Done\n");
 }
 
