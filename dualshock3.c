@@ -13,8 +13,8 @@ static int isk = 0;
 static int l2cap_listen(const bdaddr_t *bdaddr, unsigned short psm);
 static void ps3Controller_init();
 static void ps3Controller_setupDevice(int sk);
-static void ps3Controller_handleConnection();
-static void ps3Controller_handleDisconnection();
+static void ps3Controller_handle();
+static void ps3Controller_handleDis();
 static void ps3Controller_handleReport(unsigned char buf[static 49], int len,
         controller_t c);
 static void* ps3Controller_mainLoop();
@@ -26,8 +26,6 @@ void ps3Controller_start()
     if(csk == 0 && isk == 0) {
         ps3Controller_init(&csk, &isk);
         pthread_create(&t, NULL, &ps3Controller_mainLoop, NULL);
-        //pthread_join(t, NULL); 
-        //ps3Controller_mainLoop();
     }
 }
 
@@ -40,7 +38,7 @@ int ps3Controller_count()
     return i;
 }
 
-int ps3Controller_get(int index, input_t buttons)
+int ps3Controller_get(int index, dualshock3_t buttons)
 {
     controller_t c;
     //LOG("Get index %d\n", index);
@@ -92,40 +90,56 @@ static void ps3Controller_init()
         fprintf(stderr, "Unable to listen on HID PSMs.\n");
         exit(EXIT_FAILURE);
     }
-    LOG("%s", "Waiting for Bluetooth connections.\n");
+    LOG("%s", "Waiting for Bluetooth s.\n");
 }
 
-static void ps3Controller_handleConnection()
+static void ps3Controller_handle()
 {
+    static unsigned currentIndex = 0;
+    int csk, isk;
+    bdaddr_t baddr;
+
     LOG("%s", "New Device\n");
-    controller_t c = malloc(sizeof(struct controller_s));
-    c->index = 0;
-    if((c->connection.csk = accept(csk, NULL, NULL)) < 0)
+    if((csk = accept(csk, NULL, NULL)) < 0)
         fatal("accept(CTRL)");
-    if((c->connection.isk = accept(isk, NULL, NULL)) < 0)
+    if((isk = accept(isk, NULL, NULL)) < 0)
         fatal("accept(INTR)");
 
     struct sockaddr_l2 addr;
     socklen_t addrlen = sizeof(addr);
-    if (getpeername(c->connection.isk, (struct sockaddr *)&addr, &addrlen) < 0)
+    if (getpeername(isk, (struct sockaddr *)&addr, &addrlen) < 0)
         fatal("getpeername");
-    c->connection.addr = addr.l2_bdaddr;
+    baddr = addr.l2_bdaddr;
 
     unsigned char resp[64];
     char get03f2[] = { HIDP_TRANS_GET_REPORT | HIDP_DATA_RTYPE_FEATURE | 8,
         0xf2, sizeof(resp), sizeof(resp)>>8 };
-    (void)send(c->connection.csk, get03f2, sizeof(get03f2), 0);
-    (void)recv(c->connection.csk, resp, sizeof(resp), 0);
+    (void)send(csk, get03f2, sizeof(get03f2), 0);
+    (void)recv(csk, resp, sizeof(resp), 0);
 
-    pthread_mutex_init(&c->mutex, NULL);
-    c->next = controllerList_g;
-    controllerList_g = c;
-    ps3Controller_setupDevice(c->connection.csk);
+
+    controller_t c;
+    for (c = controllerList_g; c; c = c->next)
+        if(!bacmp(&c->addr, &baddr))
+            break;
+    if(!c) {
+        c = malloc(sizeof(struct controller_s));
+        c->index = currentIndex++;
+        pthread_mutex_init(&c->mutex, NULL);
+        c->addr = baddr;
+        c->next = controllerList_g;
+        controllerList_g = c;
+    }
+    c->csk = csk;
+    c->isk = isk;
+    c->paired = 1;
+
+    ps3Controller_setupDevice(c->csk);
 }
 
-static void ps3Controller_handleDisconnection()
+static void ps3Controller_handleDis(controller_t c)
 {
-
+    c->paired = 0;
 }
 
 static void ps3Controller_handleReport(unsigned char buf[static 49], int len,
@@ -191,27 +205,25 @@ static void* ps3Controller_mainLoop()
         fdmax = csk > isk ? csk : isk;
 
         for (controller_t c = controllerList_g; c; c = c->next) {
-            FD_SET(c->connection.csk, &fds);
-            if (c->connection.csk > fdmax)
-                fdmax = c->connection.csk;
-            FD_SET(c->connection.isk, &fds);
-            if (c->connection.isk > fdmax)
-                fdmax = c->connection.isk;
+            FD_SET(c->csk, &fds);
+            if (c->csk > fdmax)
+                fdmax = c->csk;
+            FD_SET(c->isk, &fds);
+            if (c->isk > fdmax)
+                fdmax = c->isk;
         }
         if (select(fdmax + 1, &fds, NULL, NULL, NULL) < 0)
             fatal("select");
 
-        // new connection (new device)
         if (FD_ISSET(csk, &fds))
-            ps3Controller_handleConnection();
+            ps3Controller_handle();
 
-        // data from a paired device
         for (controller_t c = controllerList_g; c; c = c->next) {
-            if (FD_ISSET(c->connection.isk, &fds)) {
+            if (FD_ISSET(c->isk, &fds)) {
                 unsigned char report[256];
-                int nr = recv(c->connection.isk, report, sizeof(report), 0);
+                int nr = recv(c->isk, report, sizeof(report), 0);
                 if (nr <= 0) {
-                    //TODO: handle disconnection
+                    ps3Controller_handleDis(c);
                 }
                 else
                     ps3Controller_handleReport(report, nr, c);
