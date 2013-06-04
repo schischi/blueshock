@@ -1,5 +1,5 @@
-#ifndef DUALSHOCK3_H
-# define DUALSHOCK3_H
+#ifndef BLUESHOCK_H
+# define BLUESHOCK_H
 
 #include <stdint.h>
 #include <pthread.h>
@@ -94,8 +94,7 @@ struct controller_s {
     controller_t                next;
 };
 
-void ps3Controller_start();
-int ps3Controller_get(int index, dualshock3_t buttons);
-int ps3Controller_count();
+int blueshock_start();
+int blueshock_get(int index, dualshock3_t buttons);
 
 #endif

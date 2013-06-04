@@ -1,4 +1,4 @@
-#include "dualshock3.h"
+#include "blueshock.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -11,41 +11,34 @@ static int csk = 0;
 static int isk = 0;
 
 static int l2cap_listen(const bdaddr_t *bdaddr, unsigned short psm);
-static void ps3Controller_init();
-static void ps3Controller_setupDevice(int sk);
-static void ps3Controller_handle();
-static void ps3Controller_handleDis();
-static void ps3Controller_handleReport(unsigned char buf[static 49], int len,
+static int blueshock_init();
+static void blueshock_setupDevice(int sk);
+static void blueshock_handle();
+static void blueshock_handleDis();
+static void blueshock_handleReport(unsigned char buf[static 49], int len,
         controller_t c);
-static void* ps3Controller_mainLoop();
+static void* blueshock_mainLoop();
 
-void ps3Controller_start()
+int blueshock_start()
 {
     pthread_t t;
 
     if(csk == 0 && isk == 0) {
-        ps3Controller_init(&csk, &isk);
-        pthread_create(&t, NULL, &ps3Controller_mainLoop, NULL);
+        if(blueshock_init(&csk, &isk) == -1)
+            return -1;
+        pthread_create(&t, NULL, &blueshock_mainLoop, NULL);
     }
+    return 0;
 }
 
-int ps3Controller_count()
+int blueshock_get(int index, dualshock3_t buttons)
 {
     controller_t c;
-    int i = 0;
-    for (c = controllerList_g; c; c = c->next)
-        ++i;
-    return i;
-}
-
-int ps3Controller_get(int index, dualshock3_t buttons)
-{
-    controller_t c;
-    //LOG("Get index %d\n", index);
+    LOG("Get index %d\n", index);
     for (c = controllerList_g; c && c->index != index; c = c->next)
-        LOG("index: %d\n", c->index);
+        ;
     if(c == NULL) {
-        //LOG("Index %d not found\n", index);
+        LOG("Index %d not found\n", index);
         return -1;
     }
     pthread_mutex_lock(&c->mutex);
@@ -76,33 +69,34 @@ static int l2cap_listen(const bdaddr_t *bdaddr, unsigned short psm)
     return sk;
 }
 
-static void ps3Controller_init()
+static int blueshock_init()
 {
     uid_t uid = getuid();
     if(uid) {
         fprintf(stderr, "Run as root, and you will be happy :)\n");
-        exit(EXIT_FAILURE);
+        return -1;
     }
     csk = l2cap_listen(BDADDR_ANY, L2CAP_PSM_HIDP_CTRL);
     isk = l2cap_listen(BDADDR_ANY, L2CAP_PSM_HIDP_INTR);
 
     if (csk < 0 || isk < 0) {
         fprintf(stderr, "Unable to listen on HID PSMs.\n");
-        exit(EXIT_FAILURE);
+        return -1;
     }
     LOG("%s", "Waiting for Bluetooth s.\n");
+    return 0;
 }
 
-static void ps3Controller_handle()
+static void blueshock_handle()
 {
     static unsigned currentIndex = 0;
-    int csk, isk;
+    int cs, is;
     bdaddr_t baddr;
 
     LOG("%s", "New Device\n");
-    if((csk = accept(csk, NULL, NULL)) < 0)
+    if((cs = accept(csk, NULL, NULL)) < 0)
         fatal("accept(CTRL)");
-    if((isk = accept(isk, NULL, NULL)) < 0)
+    if((is = accept(isk, NULL, NULL)) < 0)
         fatal("accept(INTR)");
 
     struct sockaddr_l2 addr;
@@ -130,19 +124,19 @@ static void ps3Controller_handle()
         c->next = controllerList_g;
         controllerList_g = c;
     }
-    c->csk = csk;
-    c->isk = isk;
+    c->csk = cs;
+    c->isk = is;
     c->paired = 1;
 
-    ps3Controller_setupDevice(c->csk);
+    blueshock_setupDevice(c->csk);
 }
 
-static void ps3Controller_handleDis(controller_t c)
+static void blueshock_handleDis(controller_t c)
 {
     c->paired = 0;
 }
 
-static void ps3Controller_handleReport(unsigned char buf[static 49], int len,
+static void blueshock_handleReport(unsigned char buf[static 49], int len,
         controller_t c)
 {
     if (buf[0] != 0xa1)
@@ -192,7 +186,7 @@ static void ps3Controller_handleReport(unsigned char buf[static 49], int len,
     pthread_mutex_unlock(&c->mutex);
 }
 
-static void* ps3Controller_mainLoop()
+static void* blueshock_mainLoop()
 {
     LOG("%s", "MainLoop\n");
     while (1) {
@@ -216,24 +210,24 @@ static void* ps3Controller_mainLoop()
             fatal("select");
 
         if (FD_ISSET(csk, &fds))
-            ps3Controller_handle();
+            blueshock_handle();
 
         for (controller_t c = controllerList_g; c; c = c->next) {
             if (FD_ISSET(c->isk, &fds)) {
                 unsigned char report[256];
                 int nr = recv(c->isk, report, sizeof(report), 0);
                 if (nr <= 0) {
-                    ps3Controller_handleDis(c);
+                    blueshock_handleDis(c);
                 }
                 else
-                    ps3Controller_handleReport(report, nr, c);
+                    blueshock_handleReport(report, nr, c);
             }
         }
 
     }
 }
 
-static void ps3Controller_setupDevice(int sk)
+static void blueshock_setupDevice(int sk)
 {
     int index = 1; //FIXME
     char set03f4[] = { HIDP_TRANS_SET_REPORT | HIDP_DATA_RTYPE_FEATURE,

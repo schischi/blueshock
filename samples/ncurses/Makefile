@@ -1,2 +1,2 @@
 all:
-	gcc main.c -lcurses -lps3_controller
+	gcc main.c -lcurses -lblueshock

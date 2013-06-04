@@ -99,7 +99,6 @@ void usb_pair_device(struct usb_device *dev, int itfnum)
     if (res < 0)
         fatal("usb_claim_interface");
 
-    bdaddr_t current_ba = get_pairing_address(devh, itfnum);
     fprintf(stderr, "Done\n");
 }
 

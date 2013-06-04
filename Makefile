@@ -1,17 +1,17 @@
-CFILES=dualshock3.c
+CFILES=blueshock.c
 CC=gcc
-CFLAGS=-Wall -std=gnu99 -O2 -g
+CFLAGS=-Wall -std=gnu99 -O2
 LDFLAGS=-lpthread
-EXE="libps3_controller.so"
+EXE="libblueshock.so"
 O=${CFILES:.c=.o}
 
 all:
-	gcc -c -Wall -std=gnu99 -fpic ${CFILES}
-	gcc -shared -o libps3_controller.so ${O} ${LDFLAGS}
+	gcc ${CFLAGS} -c -fpic ${CFILES}
+	gcc -shared -o ${EXE} ${O} ${LDFLAGS}
 
 install:
-	cp -R include/ps3_controller.h /usr/include/
-	cp -R libps3_controller.so /usr/lib
+	cp -R include/blueshock.h /usr/include/
+	cp -R ${EXE} /usr/lib
 
 clean:
 	rm -vf *.o

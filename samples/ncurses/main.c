@@ -4,7 +4,7 @@
 #include <curses.h>
 #include <unistd.h>
 #include <limits.h>
-#include <ps3_controller.h>
+#include <blueshock.h>
 
 #define REFRESH_RATE 60
 
@@ -30,7 +30,7 @@ char array[18][59] = {
 };
 char loadingCursor[] = "|/-\\|/-\\";
 WINDOW *mainwin, *cwin, *gwin, *lwin;
-struct input_s b;
+struct dualshock3_s b;
 
 void init_ui()
 {
@@ -147,17 +147,19 @@ void loadingScreen()
 
 int main()
 {
-    init_ui();
 
-    ps3Controller_start();
-    while(ps3Controller_count() == 0) {
+    if(blueshock_start() == -1) {
+        exit(EXIT_FAILURE);
+    }
+    init_ui();
+    while(blueshock_get(0, &b) == -1) {
         loadingScreen();
         usleep(1000 * 250);
     }
 
     init_mainUI();
     while(1) {
-        if(!ps3Controller_get(0, &b)) {
+        if(!blueshock_get(0, &b)) {
             refresh_ui();
         }
         usleep(1000 * 1000 / REFRESH_RATE);

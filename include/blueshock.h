@@ -1,24 +1,14 @@
-#ifndef DUALSHOCK3_H
-# define DUALSHOCK3_H
+#ifndef BLUESHOCK_H
+# define BLUESHOCK_H
 
 #include <stdint.h>
-#include <pthread.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/l2cap.h>
-#include <errno.h>
 
-struct deviceConnection_s {
-    unsigned int index;
-    bdaddr_t addr;
-    int csk;
-    int isk;
-    struct deviceConnection_s *next;
-};
-
-typedef struct input_s *input_t;
-struct input_s {
+typedef struct dualshock3_s *dualshock3_t;
+struct dualshock3_s {
     struct {
-        uint8_t 
+        uint8_t
             leftStick_x,
             leftStick_y,
             rightStick_x,
@@ -26,7 +16,7 @@ struct input_s {
     } stick;
 
     struct {
-        uint8_t 
+        uint8_t
             select:1,
             l3:1,
             r3:1,
@@ -68,19 +58,7 @@ struct input_s {
     }axis;
 };
 
-typedef struct controller_s *controller_t;
-struct controller_s {
-    int                         index;
-    struct deviceConnection_s   connection;
-    struct input_s              buttons;
-    pthread_mutex_t             mutex;
-    controller_t                next;
-};
-
-void ps3Controller_start();
-int ps3Controller_get(int index, input_t buttons);
-int ps3Controller_count();
-
-//TODO: gestion index si deconnexion
+int blueshock_start();
+int blueshock_get(int index, dualshock3_t buttons);
 
 #endif
