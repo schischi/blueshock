@@ -102,7 +102,7 @@ void usb_pair_device(struct usb_device *dev, int itfnum)
         fatal("usb_claim_interface");
 
     bdaddr_t ba, oldAddr;
-    if(!memcmp(newAddr.b, "000000", 6))
+    if(!memcmp(newAddr.b, (char[6]){0}, 6))
         ba = get_local_bdaddr();
     else
         ba = newAddr;
@@ -159,9 +159,14 @@ void usb_scan(struct usb_bus *busses)
     }
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     check_uid();
+    if(argc > 1)
+        if(mystr2ba(argv[1], &newAddr) == 1) {
+            fprintf(stderr, "Invalid arg\n");
+            exit(EXIT_FAILURE);
+        }
     struct usb_bus *busses = pairing_init();
     usb_scan(busses);
     return 0;
