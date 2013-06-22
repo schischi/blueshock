@@ -60,5 +60,6 @@ struct dualshock3_s {
 
 int blueshock_start();
 int blueshock_get(int index, dualshock3_t buttons);
+void blueshock_setLeds(int index, int num);
 
 #endif

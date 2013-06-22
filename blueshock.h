@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <pthread.h>
+#include <errno.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/l2cap.h>
 
@@ -15,7 +16,7 @@
 # define HIDP_DATA_RTYPE_OUTPUT   0x02
 # define HIDP_DATA_RTYPE_FEATURE  0x03
 
-# include <errno.h>
+# define LED_PERMANENT 0xff, 0x27, 0x00, 0x00, 0x32
 
 # define DEBUG 0
 
@@ -96,5 +97,6 @@ struct controller_s {
 
 int blueshock_start();
 int blueshock_get(int index, dualshock3_t buttons);
+void blueshock_setLeds(int index, int num);
 
 #endif

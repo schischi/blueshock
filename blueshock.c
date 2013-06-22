@@ -5,14 +5,13 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 
-/* Global variables */
 controller_t controllerList_g = NULL;
 static int csk = 0;
 static int isk = 0;
 
 static int l2cap_listen(const bdaddr_t *bdaddr, unsigned short psm);
 static int blueshock_init();
-static void blueshock_setupDevice(int sk);
+static void blueshock_setupDevice(int sk, int index);
 static void blueshock_handle();
 static void blueshock_handleDis();
 static void blueshock_handleReport(unsigned char buf[static 49], int len,
@@ -128,7 +127,7 @@ static void blueshock_handle()
     c->isk = is;
     c->paired = 1;
 
-    blueshock_setupDevice(c->csk);
+    blueshock_setupDevice(c->csk, c->index);
 }
 
 static void blueshock_handleDis(controller_t c)
@@ -227,9 +226,8 @@ static void* blueshock_mainLoop()
     }
 }
 
-static void blueshock_setupDevice(int sk)
+static void blueshock_setupDevice(int sk, int index)
 {
-    int index = 1; //FIXME
     char set03f4[] = { HIDP_TRANS_SET_REPORT | HIDP_DATA_RTYPE_FEATURE,
         0xf4, 0x42, 0x03, 0x00, 0x00 };
     // Enable reporting
@@ -240,11 +238,10 @@ static void blueshock_setupDevice(int sk)
         fatal("ack");
     // Leds: Display 1+index in additive format.
     static const char ledmask[10] = { 1, 2, 4, 8, 6, 7, 11, 13, 14, 15 };
-#define LED_PERMANENT 0xff, 0x27, 0x00, 0x00, 0x32
     char set0201[] = {
         HIDP_TRANS_SET_REPORT | HIDP_DATA_RTYPE_OUTPUT, 0x01,
         0x00, 0x00, 0x00, 0,0, 0x00, 0x00, 0x00,
-        0x00, ledmask[index%10]<<1,
+        0x00, ledmask[index%10],
         LED_PERMANENT,
         LED_PERMANENT,
         LED_PERMANENT,
@@ -252,10 +249,6 @@ static void blueshock_setupDevice(int sk)
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     };
     set0201[3] = set0201[5] = 4;
-    //SIXAXIS
-    //set0201[5] = 0xff;  // Enable gyro
-    //set0201[6] = 0x78;  // Constant bias (should adjust periodically ?)
-    //DS3
     set0201[5] = 0;
     set0201[6] = 0x70;
     send(sk, set0201, sizeof(set0201), 0);
@@ -264,28 +257,29 @@ static void blueshock_setupDevice(int sk)
         fatal("ack");
 }
 
-/*
-   void dualshock_rumble(int csk, uint8_t left, uint8_t right, uint8_t t)
-   {
-   unsigned char buf[] = {
-   0x52,
-   0x01,
-   0x00, 0x00, 0x00, 0x00,
-   0x00, 0x00, 0x00, 0x00, 0x1E,
-   0xff, 0x27, 0x10, 0x00, 0x32,
-   0xff, 0x27, 0x10, 0x00, 0x32,
-   0xff, 0x27, 0x10, 0x00, 0x32,
-   0xff, 0x27, 0x10, 0x00, 0x32,
-   0x00, 0x00, 0x00, 0x00, 0x00
-   };
-   unsigned char buf2[128];
+void dualshock_setLeds(int sk, int num)
+{
+    int nr;
+    unsigned char ack;
+    char buf[] = {
+        HIDP_TRANS_SET_REPORT | HIDP_DATA_RTYPE_OUTPUT, 0x01,
+        0x00, 0x00, 0x00, 0,0, 0x00, 0x00, 0x00,
+        0x00, num << 1,
+        LED_PERMANENT,
+        LED_PERMANENT,
+        LED_PERMANENT,
+        LED_PERMANENT,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
+    send(sk, buf, sizeof(buf), 0);
+    nr = recv(sk, &ack, sizeof(ack), 0);
+    if (nr != 1 || ack != 0)
+        fatal("ack");
+}
 
-   if(t < 10)
-   t = 10;
-   buf[3] = buf[5] = t;
-   buf[4] = left;
-   buf[6] = right;
-   (void)send(csk, buf, sizeof(buf), 0);
-   (void)recv(csk, buf2, sizeof(buf2), 0);
-   }
-   */
+void blueshock_setLeds(int index, int num)
+{
+    for (controller_t c = controllerList_g; c; c = c->next)
+        if(c->index == index)
+            dualshock_setLeds(c->csk, num);
+}
