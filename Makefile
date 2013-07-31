@@ -6,8 +6,8 @@ EXE="libblueshock.so"
 O=${CFILES:.c=.o}
 
 all:
-	gcc ${CFLAGS} -c -fpic ${CFILES}
-	gcc -shared -o ${EXE} ${O} ${LDFLAGS}
+	${CC} ${CFLAGS} -c -fpic ${CFILES}
+	${CC} -shared -o ${EXE} ${O} ${LDFLAGS}
 
 install:
 	cp -R include/blueshock.h /usr/include/
