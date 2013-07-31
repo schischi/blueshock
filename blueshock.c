@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 
 controller_t controllerList_g = NULL;
+volatile int quit_g = 0;
 static int csk = 0;
 static int isk = 0;
 
@@ -27,7 +28,24 @@ int blueshock_start()
             return -1;
         pthread_create(&t, NULL, &blueshock_mainLoop, NULL);
     }
+    quit_g = 0;
     return 0;
+}
+
+void blueshock_stop()
+{
+    controller_t it, tmp;
+    quit_g = 1;
+    for (it = controllerList_g; it; it = it->next) {
+        tmp = it->next;
+        close(it->csk);
+        close(it->isk);
+        free(it);
+        it = tmp;
+    }
+    controllerList_g = NULL;
+    close(csk);
+    close(isk);
 }
 
 int blueshock_get(int index, dualshock3_t buttons)
@@ -187,9 +205,12 @@ static void blueshock_handleReport(unsigned char buf[static 49], int len,
 
 static void* blueshock_mainLoop()
 {
+    int ret;
+
     LOG("%s", "MainLoop\n");
-    while (1) {
+    while (!quit_g) {
         fd_set fds;
+        struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
         FD_ZERO(&fds);
         FD_SET(STDIN_FILENO, &fds);
         int fdmax = 0;
@@ -205,8 +226,11 @@ static void* blueshock_mainLoop()
             if (c->isk > fdmax)
                 fdmax = c->isk;
         }
-        if (select(fdmax + 1, &fds, NULL, NULL, NULL) < 0)
+        ret = select(fdmax + 1, &fds, NULL, NULL, &tv);
+        if(ret < 0)
             fatal("select");
+        if(ret == 0)
+            continue;
 
         if (FD_ISSET(csk, &fds))
             blueshock_handle();
@@ -215,28 +239,26 @@ static void* blueshock_mainLoop()
             if (FD_ISSET(c->isk, &fds)) {
                 unsigned char report[256];
                 int nr = recv(c->isk, report, sizeof(report), 0);
-                if (nr <= 0) {
+                if (nr <= 0)
                     blueshock_handleDis(c);
-                }
                 else
                     blueshock_handleReport(report, nr, c);
             }
         }
 
     }
+    return NULL;
 }
 
 static void blueshock_setupDevice(int sk, int index)
 {
     char set03f4[] = { HIDP_TRANS_SET_REPORT | HIDP_DATA_RTYPE_FEATURE,
         0xf4, 0x42, 0x03, 0x00, 0x00 };
-    // Enable reporting
     send(sk, set03f4, sizeof(set03f4), 0);
     unsigned char ack;
     int nr = recv(sk, &ack, sizeof(ack), 0);
     if (nr != 1 || ack != 0)
         fatal("ack");
-    // Leds: Display 1+index in additive format.
     static const char ledmask[10] = { 1, 2, 4, 8, 6, 7, 11, 13, 14, 15 };
     char set0201[] = {
         HIDP_TRANS_SET_REPORT | HIDP_DATA_RTYPE_OUTPUT, 0x01,
@@ -257,7 +279,7 @@ static void blueshock_setupDevice(int sk, int index)
         fatal("ack");
 }
 
-void dualshock_setLeds(int sk, int num)
+static void dualshock_setLeds(int sk, int num)
 {
     int nr;
     unsigned char ack;
