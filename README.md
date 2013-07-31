@@ -13,4 +13,7 @@ Requirements
 
 Using blueshock
 ---------------
+You need to uncomment the following line in /etc/bluetooth/main.conf :
+`DisablePlugins = network,input`
+
 See the examples in the "samples" folder.
